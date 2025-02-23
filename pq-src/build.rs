@@ -169,36 +169,37 @@ fn main() {
     let use_openssl = env::var("CARGO_FEATURE_WITH_OPENSSL").is_ok();
 
     println!("cargo:rerun-if-changed=additional_include");
-    let crate_dir = env!("CARGO_MANIFEST_DIR");
-    let temp_include = format!("{}/more_include/", env::var("OUT_DIR").unwrap());
-    let path = format!("{crate_dir}/source/");
-    let port_path = "src/port/";
-    let common_path = "src/common/";
-    let pq_path = "src/interfaces/libpq/";
+    let out = PathBuf::from(env::var("OUT_DIR").expect("Set by cargo"));
+    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let temp_include = out.join("more_include");
+    let path = crate_dir.join("source");
+    let port_path = PathBuf::from("src/port");
+    let common_path = PathBuf::from("src/common");
+    let pq_path = PathBuf::from("src/interfaces/libpq");
 
-    if !PathBuf::from(&temp_include).exists() {
+    if !temp_include.exists() {
         fs::create_dir(&temp_include).unwrap();
     }
-    if !PathBuf::from(format!("{temp_include}pg_config_os.h")).exists() {
+    if !temp_include.join("pg_config_os.h").exists() {
         match target_os.as_str() {
             "linux" => {
                 fs::copy(
-                    format!("{path}src/include/port/linux.h"),
-                    format!("{temp_include}pg_config_os.h"),
+                    path.join("src/include/port/linux.h"),
+                    temp_include.join("pg_config_os.h"),
                 )
                 .unwrap();
             }
             "macos" => {
                 fs::copy(
-                    format!("{path}src/include/port/darwin.h"),
-                    format!("{temp_include}pg_config_os.h"),
+                    path.join("src/include/port/darwin.h"),
+                    temp_include.join("pg_config_os.h"),
                 )
                 .unwrap();
             }
             "windows" => {
                 fs::copy(
-                    format!("{path}src/include/port/win32.h"),
-                    format!("{temp_include}pg_config_os.h"),
+                    path.join("src/include/port/win32.h"),
+                    temp_include.join("pg_config_os.h"),
                 )
                 .unwrap();
                 println!("cargo:rustc-link-lib=Secur32");
@@ -211,16 +212,16 @@ fn main() {
     let mut basic_build = cc::Build::new();
 
     let base_includes = &[
-        format!("{path}{port_path}"),
-        format!("{path}src/include"),
-        format!("{crate_dir}/additional_include"),
-        temp_include.clone(),
+        path.join(&port_path),
+        path.join("src/include"),
+        crate_dir.join("additional_include"),
+        temp_include,
     ][..];
 
     let mut includes = if target_os == "windows" {
         let includes_windows = &[
-            format!("{path}/src/include/port/win32/"),
-            format!("{path}/src/include/port/win32_msvc/"),
+            path.join("src/include/port/win32"),
+            path.join("src/include/port/win32_msvc"),
         ];
         [base_includes, includes_windows].concat()
     } else {
@@ -228,7 +229,7 @@ fn main() {
     };
 
     if use_openssl {
-        includes.push(env::var("DEP_OPENSSL_INCLUDE").unwrap());
+        includes.push(PathBuf::from(env::var("DEP_OPENSSL_INCLUDE").unwrap()));
     }
 
     basic_build
@@ -282,17 +283,16 @@ fn main() {
 
     basic_build
         .files(
-            (libports.map(|p| format!("{path}{port_path}{p}")))
-                .chain(libcommon.map(|p| format!("{path}{common_path}{p}")))
-                .chain(libpq.map(|p| format!("{path}{pq_path}{p}"))),
+            (libports.map(|p| path.join(&port_path).join(p)))
+                .chain(libcommon.map(|p| path.join(&common_path).join(p)))
+                .chain(libpq.map(|p| path.join(&pq_path).join(p))),
         )
         .compile("pq");
 
-    let out = env::var("OUT_DIR").expect("Set by cargo");
-    let include_path = PathBuf::from(&out).join("include");
-    let lib_pq_path = PathBuf::from(format!("{path}/{pq_path}"));
-    let postgres_include_path = PathBuf::from(format!("{path}src/include"));
-    let additional_includes_path = PathBuf::from(format!("{crate_dir}/additional_include"));
+    let include_path = out.join("include");
+    let lib_pq_path = path.join(pq_path);
+    let postgres_include_path = path.join("src/include");
+    let additional_includes_path = crate_dir.join("additional_include");
     fs::create_dir_all(&include_path).expect("Failed to create include directory");
     fs::create_dir_all(include_path.join("postgres").join("internal"))
         .expect("Failed to create include directory");
@@ -342,6 +342,6 @@ fn main() {
     )
     .expect("Copying headers failed");
 
-    println!("cargo:include={out}/include");
-    println!("cargo:lib_dir={}", out);
+    println!("cargo:include={}", out.join("include").display());
+    println!("cargo:lib_dir={}", out.display());
 }
